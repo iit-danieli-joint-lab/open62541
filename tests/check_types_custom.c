@@ -63,7 +63,7 @@ static const UA_DataType PointType = {
     sizeof(Point),                   /* .memSize */
     0,                               /* .typeIndex, in the array of custom types */
     3,                               /* .membersSize */
-    false,                           /* .builtin */
+    UA_DATATYPEKIND_STRUCTURE,       /* .typeKind */
     true,                            /* .pointerFree */
     false,                           /* .overlayable (depends on endianness and
                                          the absence of padding) */
