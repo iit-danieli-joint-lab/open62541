@@ -18,7 +18,6 @@
 #endif
 
 #include <time.h>
-#include <sys/time.h>
 
 #include <open62541/types.h>
 
