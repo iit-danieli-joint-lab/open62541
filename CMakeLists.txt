@@ -895,6 +895,12 @@ else()
     set_target_properties(open62541-plugins PROPERTIES FOLDER "open62541/lib")
 
     add_library(open62541 $<TARGET_OBJECTS:open62541-object> $<TARGET_OBJECTS:open62541-plugins>)
+    target_include_directories(open62541 INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                                                   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/plugins>
+                                                   $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/src_generated>)
+    foreach(dir IN LISTS ua_directories_to_include)
+        target_include_directories(open62541 INTERFACE $<BUILD_INTERFACE:${dir}>)
+    endforeach()
 
     if(UA_COMPILE_AS_CXX)
         set_source_files_properties(${lib_sources} PROPERTIES LANGUAGE CXX)
