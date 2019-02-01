@@ -18,7 +18,6 @@
 #endif
 
 #include <time.h>
-#include <sys/time.h>
 
 #include "ua_types.h"
 
