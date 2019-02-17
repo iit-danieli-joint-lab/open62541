@@ -286,7 +286,7 @@ _UA_END_DECLS
     # having a single huge function
     beginFunctionCounter = 0
     finishFunctionCounter = functionNumber
-    numberOfCallsForHelper = 1000
+    numberOfCallsForHelper = 200
     # The total number of function calls is functionNumber by two (one
     # begin, and one finish)
     helperNumber = int(math.ceil(2*functionNumber/float(numberOfCallsForHelper)))
