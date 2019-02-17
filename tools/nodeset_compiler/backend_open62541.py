@@ -33,6 +33,7 @@ if sys.version_info[0] >= 3:
     # strings are already parsed to unicode
     def unicode(s):
         return s
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -281,6 +282,32 @@ _UA_END_DECLS
 
         functionNumber = functionNumber + 1
 
+    # Split the main namespace function in helper functions to avoid
+    # having a single huge function
+    beginFunctionCounter = 0
+    finishFunctionCounter = functionNumber
+    numberOfCallsForHelper = 1000
+    # The total number of function calls is functionNumber by two (one
+    # begin, and one finish)
+    helperNumber = int(math.ceil(2*functionNumber/float(numberOfCallsForHelper)))
+    for helperNr in range(0, helperNumber):
+        writec("""
+static UA_StatusCode %s_helper_%d(UA_Server *server, UA_UInt16* ns) {
+UA_StatusCode retVal = UA_STATUSCODE_GOOD;""" % (outfilebase, helperNr))
+        helperFunctionCounter = 0;
+
+        while(beginFunctionCounter < functionNumber and helperFunctionCounter < numberOfCallsForHelper):
+            writec("retVal |= function_" + outfilebase + "_" + str(beginFunctionCounter) + "_begin(server, ns);")
+            beginFunctionCounter = beginFunctionCounter+1;
+            helperFunctionCounter = helperFunctionCounter+1;
+
+        while(finishFunctionCounter > 0 and helperFunctionCounter < numberOfCallsForHelper):
+            finishFunctionCounter = finishFunctionCounter-1;
+            writec("retVal |= function_" + outfilebase + "_" + str(finishFunctionCounter) + "_finish(server, ns);")
+            helperFunctionCounter = helperFunctionCounter+1;
+
+        writec("return retVal;\n}")
+
     writec("""
 UA_StatusCode %s(UA_Server *server) {
 UA_StatusCode retVal = UA_STATUSCODE_GOOD;""" % (outfilebase))
@@ -292,11 +319,8 @@ UA_StatusCode retVal = UA_STATUSCODE_GOOD;""" % (outfilebase))
         nsid = nsid.replace("\"", "\\\"")
         writec("ns[" + str(i) + "] = UA_Server_addNamespace(server, \"" + nsid + "\");")
 
-    for i in range(0, functionNumber):
-        writec("retVal |= function_" + outfilebase + "_" + str(i) + "_begin(server, ns);")
-
-    for i in reversed(range(0, functionNumber)):
-        writec("retVal |= function_" + outfilebase + "_" + str(i) + "_finish(server, ns);")
+    for i in range(0, helperNumber):
+        writec("retVal |= " + outfilebase + "_helper_" + str(i) + "(server, ns);")
 
     writec("return retVal;\n}")
     outfileh.flush()
