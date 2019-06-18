@@ -33,7 +33,6 @@ if sys.version_info[0] >= 3:
     # strings are already parsed to unicode
     def unicode(s):
         return s
-import math
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +72,8 @@ def sortNodes(nodeset):
     # used in a reference, it must exist. A Variable node may point to a
     # DataTypeNode in the datatype attribute and not via an explicit reference.
 
-    Q = {node for node in R.values() if in_degree[node.id] == 0 and
-         (isinstance(node, ReferenceTypeNode) or isinstance(node, DataTypeNode))}
+    Q = [node for node in R.values() if in_degree[node.id] == 0 and
+         (isinstance(node, ReferenceTypeNode) or isinstance(node, DataTypeNode))]
     while Q:
         u = Q.pop() # choose node of zero in-degree and 'remove' it from graph
         L.append(u)
@@ -89,10 +88,10 @@ def sortNodes(nodeset):
                 continue
             in_degree[ref.target] -= 1
             if in_degree[ref.target] == 0:
-                Q.add(R[ref.target])
+                Q.append(R[ref.target])
 
     # Order the remaining nodes
-    Q = {node for node in R.values() if in_degree[node.id] == 0}
+    Q = [node for node in R.values() if in_degree[node.id] == 0]
     while Q:
         u = Q.pop() # choose node of zero in-degree and 'remove' it from graph
         L.append(u)
@@ -107,7 +106,7 @@ def sortNodes(nodeset):
                 continue
             in_degree[ref.target] -= 1
             if in_degree[ref.target] == 0:
-                Q.add(R[ref.target])
+                Q.append(R[ref.target])
 
     # reverse hastype references
     for u in nodeset.nodes.values():
@@ -131,7 +130,7 @@ def sortNodes(nodeset):
 # Generate C Code #
 ###################
 
-def generateOpen62541Code(nodeset, outfilename, generate_ns0=False, internal_headers=False, typesArray=[], encode_binary_size=32000):
+def generateOpen62541Code(nodeset, outfilename, internal_headers=False, typesArray=[]):
     outfilebase = basename(outfilename)
     # Printing functions
     outfileh = codecs.open(outfilename + ".h", r"w+", encoding='utf-8')
@@ -148,7 +147,10 @@ def generateOpen62541Code(nodeset, outfilename, generate_ns0=False, internal_hea
         for arr in set(typesArray):
             if arr == "UA_TYPES":
                 continue
-            additionalHeaders += """#include "%s_generated.h"\n""" % arr.lower()
+            # remove ua_ prefix if exists
+            typeFile = arr.lower()
+            typeFile = typeFile[typeFile.startswith("ua_") and len("ua_"):]
+            additionalHeaders += """#include "%s_generated.h"\n""" % typeFile
 
     # Print the preamble of the generated code
     writeh("""/* WARNING: This is a generated file.
@@ -164,7 +166,7 @@ def generateOpen62541Code(nodeset, outfilename, generate_ns0=False, internal_hea
 
 /* The following declarations are in the open62541.c file so here's needed when compiling nodesets externally */
 
-# ifndef UA_Nodestore_remove //this definition is needed to hide this code in the amalgamated .c file
+# ifndef UA_INTERNAL //this definition is needed to hide this code in the amalgamated .c file
 
 typedef UA_StatusCode (*UA_exchangeEncodeBuffer)(void *handle, UA_Byte **bufPos,
                                                  const UA_Byte **bufEnd);
@@ -186,10 +188,10 @@ UA_calcSizeBinary(void *p, const UA_DataType *type);
 const UA_DataType *
 UA_findDataTypeByBinary(const UA_NodeId *typeId);
 
-# endif // UA_Nodestore_remove
+# endif // UA_INTERNAL
 
 #else // UA_ENABLE_AMALGAMATION
-# include "ua_server.h"
+# include <open62541/server.h>
 #endif
 
 %s
@@ -199,7 +201,7 @@ UA_findDataTypeByBinary(const UA_NodeId *typeId);
 #ifdef UA_ENABLE_AMALGAMATION
 # include "open62541.h"
 #else
-# include "ua_server.h"
+# include <open62541/server.h>
 #endif
 %s
 """ % (additionalHeaders))
@@ -225,18 +227,14 @@ _UA_END_DECLS
     logger.info("Writing code for nodes and references")
     functionNumber = 0
 
-    parentreftypes = getSubTypesOf(nodeset, nodeset.getNodeByBrowseName("HierarchicalReferences"))
-    parentreftypes = list(map(lambda x: x.id, parentreftypes))
-
     printed_ids = set()
     for node in sorted_nodes:
         printed_ids.add(node.id)
 
-        parentref = node.popParentRef(parentreftypes)
         if not node.hidden:
             writec("\n/* " + str(node.displayName) + " - " + str(node.id) + " */")
             code_global = []
-            code = generateNodeCode_begin(node, nodeset, generate_ns0, parentref, encode_binary_size, code_global)
+            code = generateNodeCode_begin(node, nodeset, code_global)
             if code is None:
                 writec("/* Ignored. No parent */")
                 nodeset.hide_node(node.id)
@@ -255,6 +253,10 @@ _UA_END_DECLS
             if ref.target not in printed_ids:
                 continue
             if node.hidden and nodeset.nodes[ref.target].hidden:
+                continue
+            if node.parent is not None and ref.target == node.parent.id \
+                and ref.referenceType == node.parentReference.id:
+                # Skip parent reference
                 continue
             writec(generateReferenceCode(ref))
 
@@ -281,48 +283,48 @@ _UA_END_DECLS
         writec("}");
 
         functionNumber = functionNumber + 1
+    
+    if functionNumber > 0:
+        writec("\nenum {{ARRAY_FUNCTION_NAMESPACE0_GENERATED_SIZE = 2 * {functionnumber}}};\n".format(functionnumber=functionNumber))
+        writec("""UA_StatusCode (*function_namespace0_generated[ARRAY_FUNCTION_NAMESPACE0_GENERATED_SIZE])(UA_Server *, UA_UInt16 *) = {""")
+        for i in range(0, functionNumber):
+            writec("    function_{outfilebase}_{idx}_begin,".format(
+                outfilebase=outfilebase, idx=str(i)))
 
-    # Split the main namespace function in helper functions to avoid
-    # having a single huge function
-    beginFunctionCounter = 0
-    finishFunctionCounter = functionNumber
-    numberOfCallsForHelper = 200
-    # The total number of function calls is functionNumber by two (one
-    # begin, and one finish)
-    helperNumber = int(math.ceil(2*functionNumber/float(numberOfCallsForHelper)))
-    for helperNr in range(0, helperNumber):
-        writec("""
-static UA_StatusCode %s_helper_%d(UA_Server *server, UA_UInt16* ns) {
-UA_StatusCode retVal = UA_STATUSCODE_GOOD;""" % (outfilebase, helperNr))
-        helperFunctionCounter = 0;
+        for i in reversed(range(0, functionNumber)):
+            writec("    function_{outfilebase}_{idx}_finish{concat}".format(
+                outfilebase=outfilebase, idx=str(i), concat= "," if i>0 else ""))
 
-        while(beginFunctionCounter < functionNumber and helperFunctionCounter < numberOfCallsForHelper):
-            writec("retVal |= function_" + outfilebase + "_" + str(beginFunctionCounter) + "_begin(server, ns);")
-            beginFunctionCounter = beginFunctionCounter+1;
-            helperFunctionCounter = helperFunctionCounter+1;
-
-        while(finishFunctionCounter > 0 and helperFunctionCounter < numberOfCallsForHelper):
-            finishFunctionCounter = finishFunctionCounter-1;
-            writec("retVal |= function_" + outfilebase + "_" + str(finishFunctionCounter) + "_finish(server, ns);")
-            helperFunctionCounter = helperFunctionCounter+1;
-
-        writec("return retVal;\n}")
+        writec("};\n")
 
     writec("""
-UA_StatusCode %s(UA_Server *server) {
-UA_StatusCode retVal = UA_STATUSCODE_GOOD;""" % (outfilebase))
+UA_StatusCode %s(UA_Server *server)
+{
+    UA_StatusCode retVal = UA_STATUSCODE_GOOD;
+    unsigned int index;""" % (outfilebase)
+    )
 
     # Generate namespaces (don't worry about duplicates)
-    writec("/* Use namespace ids generated by the server */")
-    writec("UA_UInt16 ns[" + str(len(nodeset.namespaces)) + "];")
+    writec("\n    /* Use namespace ids generated by the server */")
+    writec("    UA_UInt16 ns[" + str(len(nodeset.namespaces)) + "];")
     for i, nsid in enumerate(nodeset.namespaces):
         nsid = nsid.replace("\"", "\\\"")
-        writec("ns[" + str(i) + "] = UA_Server_addNamespace(server, \"" + nsid + "\");")
+        writec("    ns[" + str(i) + "] = UA_Server_addNamespace(server, \"" + nsid + "\");")
 
-    for i in range(0, helperNumber):
-        writec("retVal |= " + outfilebase + "_helper_" + str(i) + "(server, ns);")
+    if functionNumber > 0:
+        writec("""
+    for (index=0; index < ARRAY_FUNCTION_NAMESPACE0_GENERATED_SIZE; index++)
+    {
+        retVal = (*function_namespace0_generated[index])(server, ns);
+        if(retVal != UA_STATUSCODE_GOOD)
+        {
+            break;
+        }
+    }
 
-    writec("return retVal;\n}")
+    return retVal;
+}""")
+
     outfileh.flush()
     os.fsync(outfileh)
     outfileh.close()
