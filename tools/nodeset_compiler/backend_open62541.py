@@ -191,7 +191,7 @@ UA_findDataTypeByBinary(const UA_NodeId *typeId);
 # endif // UA_INTERNAL
 
 #else // UA_ENABLE_AMALGAMATION
-# include <open62541/server.h>
+# include <server.h>
 #endif
 
 %s
@@ -201,7 +201,7 @@ UA_findDataTypeByBinary(const UA_NodeId *typeId);
 #ifdef UA_ENABLE_AMALGAMATION
 # include "open62541.h"
 #else
-# include <open62541/server.h>
+# include <server.h>
 #endif
 %s
 """ % (additionalHeaders))
