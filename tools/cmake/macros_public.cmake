@@ -32,19 +32,21 @@ function(ua_generate_nodeid_header)
 
     # Set default value for output dir
     if(NOT UA_GEN_ID_OUTPUT_DIR OR "${UA_GEN_ID_OUTPUT_DIR}" STREQUAL "")
-        set(UA_GEN_ID_OUTPUT_DIR ${PROJECT_BINARY_DIR}/src_generated)
+        set(UA_GEN_ID_OUTPUT_DIR ${PROJECT_BINARY_DIR}/src_generated/open62541)
     endif()
     # Set default target prefix
     if(NOT UA_GEN_ID_TARGET_PREFIX OR "${UA_GEN_ID_TARGET_PREFIX}" STREQUAL "")
         set(UA_GEN_ID_TARGET_PREFIX "open62541-generator")
     endif()
 
+    # Replace dash with underscore to make valid c literal
+    string(REPLACE "-" "_" UA_GEN_ID_NAME ${UA_GEN_ID_NAME})
 
     add_custom_target(${UA_GEN_ID_TARGET_PREFIX}-${UA_GEN_ID_TARGET_SUFFIX} DEPENDS
         ${UA_GEN_ID_OUTPUT_DIR}/${UA_GEN_ID_NAME}.h
     )
-    
-    # Make sure that the output directory exists 
+
+    # Make sure that the output directory exists
     if(NOT EXISTS ${UA_GEN_ID_OUTPUT_DIR})
         file(MAKE_DIRECTORY ${UA_GEN_ID_OUTPUT_DIR})
     endif()
@@ -79,6 +81,7 @@ endfunction()
 #   Options:
 #
 #   [BUILTIN]       Optional argument. If given, then builtin types will be generated.
+#   [INTERNAL]      Optional argument. If given, then the given types file is seen as internal file (e.g. does not require a .csv)
 #
 #   Arguments taking one value:
 #
@@ -100,7 +103,7 @@ endfunction()
 #
 #
 function(ua_generate_datatypes)
-    set(options BUILTIN)
+    set(options BUILTIN INTERNAL)
     set(oneValueArgs NAME TARGET_SUFFIX TARGET_PREFIX NAMESPACE_IDX OUTPUT_DIR FILE_CSV)
     set(multiValueArgs FILES_BSD FILES_SELECTED)
     cmake_parse_arguments(UA_GEN_DT "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
@@ -128,13 +131,12 @@ function(ua_generate_datatypes)
 
     # Set default value for output dir
     if(NOT UA_GEN_DT_OUTPUT_DIR OR "${UA_GEN_DT_OUTPUT_DIR}" STREQUAL "")
-        set(UA_GEN_DT_OUTPUT_DIR ${PROJECT_BINARY_DIR}/src_generated)
+        set(UA_GEN_DT_OUTPUT_DIR ${PROJECT_BINARY_DIR}/src_generated/open62541)
     endif()
     # Set default target prefix
     if(NOT UA_GEN_DT_TARGET_PREFIX OR "${UA_GEN_DT_TARGET_PREFIX}" STREQUAL "")
         set(UA_GEN_DT_TARGET_PREFIX "open62541-generator")
     endif()
-
 
     # ------ Add custom command and target -----
 
@@ -143,6 +145,10 @@ function(ua_generate_datatypes)
         set(UA_GEN_DT_NO_BUILTIN "")
     endif()
 
+    set(UA_GEN_DT_INTERNAL_ARG "")
+    if (UA_GEN_DT_INTERNAL)
+        set(UA_GEN_DT_INTERNAL_ARG "--internal")
+    endif()
 
     set(SELECTED_TYPES_TMP "")
     foreach(f ${UA_GEN_DT_FILES_SELECTED})
@@ -153,11 +159,14 @@ function(ua_generate_datatypes)
     foreach(f ${UA_GEN_DT_FILES_BSD})
         set(BSD_FILES_TMP ${BSD_FILES_TMP} "--type-bsd=${f}")
     endforeach()
-    
-    # Make sure that the output directory exists 
+
+    # Make sure that the output directory exists
     if(NOT EXISTS ${UA_GEN_DT_OUTPUT_DIR})
         file(MAKE_DIRECTORY ${UA_GEN_DT_OUTPUT_DIR})
     endif()
+
+    # Replace dash with underscore to make valid c literal
+    string(REPLACE "-" "_" UA_GEN_DT_NAME ${UA_GEN_DT_NAME})
 
     add_custom_command(OUTPUT ${UA_GEN_DT_OUTPUT_DIR}/${UA_GEN_DT_NAME}_generated.c
         ${UA_GEN_DT_OUTPUT_DIR}/${UA_GEN_DT_NAME}_generated.h
@@ -170,6 +179,7 @@ function(ua_generate_datatypes)
         ${BSD_FILES_TMP}
         --type-csv=${UA_GEN_DT_FILE_CSV}
         ${UA_GEN_DT_NO_BUILTIN}
+        ${UA_GEN_DT_INTERNAL_ARG}
         ${UA_GEN_DT_OUTPUT_DIR}/${UA_GEN_DT_NAME}
         DEPENDS ${open62541_TOOLS_DIR}/generate_datatypes.py
         ${UA_GEN_DT_FILES_BSD}
@@ -183,8 +193,8 @@ function(ua_generate_datatypes)
         )
 
     string(TOUPPER "${UA_GEN_DT_NAME}" GEN_NAME_UPPER)
-    set(${GEN_NAME_UPPER}_SOURCES "${UA_GEN_DT_OUTPUT_DIR}/${UA_GEN_DT_NAME}_generated.c" CACHE INTERNAL "${UA_GEN_DT_NAME} source files")
-    set(${GEN_NAME_UPPER}_HEADERS "${UA_GEN_DT_OUTPUT_DIR}/${UA_GEN_DT_NAME}_generated.h;${UA_GEN_DT_OUTPUT_DIR}/${UA_GEN_DT_NAME}_generated_handling.h;${UA_GEN_DT_OUTPUT_DIR}/${UA_GEN_DT_NAME}_generated_encoding_binary.h"
+    set(UA_${GEN_NAME_UPPER}_SOURCES "${UA_GEN_DT_OUTPUT_DIR}/${UA_GEN_DT_NAME}_generated.c" CACHE INTERNAL "${UA_GEN_DT_NAME} source files")
+    set(UA_${GEN_NAME_UPPER}_HEADERS "${UA_GEN_DT_OUTPUT_DIR}/${UA_GEN_DT_NAME}_generated.h;${UA_GEN_DT_OUTPUT_DIR}/${UA_GEN_DT_NAME}_generated_handling.h;${UA_GEN_DT_OUTPUT_DIR}/${UA_GEN_DT_NAME}_generated_encoding_binary.h"
         CACHE INTERNAL "${UA_GEN_DT_NAME} header files")
 
     if(UA_COMPILE_AS_CXX)
@@ -215,7 +225,6 @@ endfunction()
 #   NAME            Name of the nodeset, e.g. 'di'
 #   [TYPES_ARRAY]   Optional name of the types array containing the custom datatypes of this node set.
 #   [OUTPUT_DIR]    Optional target directory for the generated files. Default is '${PROJECT_BINARY_DIR}/src_generated'
-#   [ENCODE_BINARY_SIZE]    Optional array size for binary encoding extension objects.
 #   [IGNORE]        Optional file containing a list of node ids which should be ignored. The file should have one id per line.
 #   [TARGET_PREFIX] Optional prefix for the resulting target. Default `open62541-generator`
 #
@@ -230,7 +239,7 @@ endfunction()
 function(ua_generate_nodeset)
 
     set(options INTERNAL )
-    set(oneValueArgs NAME TYPES_ARRAY OUTPUT_DIR ENCODE_BINARY_SIZE IGNORE TARGET_PREFIX)
+    set(oneValueArgs NAME TYPES_ARRAY OUTPUT_DIR IGNORE TARGET_PREFIX)
     set(multiValueArgs FILE DEPENDS_TYPES DEPENDS_NS DEPENDS_TARGET)
     cmake_parse_arguments(UA_GEN_NS "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
 
@@ -250,14 +259,7 @@ function(ua_generate_nodeset)
 
     # Set default value for output dir
     if(NOT UA_GEN_NS_OUTPUT_DIR OR "${UA_GEN_NS_OUTPUT_DIR}" STREQUAL "")
-        set(UA_GEN_NS_OUTPUT_DIR ${PROJECT_BINARY_DIR}/src_generated)
-    endif()
-
-    list(LENGTH UA_GEN_NS_DEPENDS_TYPES DEPENDS_TYPES_LEN)
-    list(LENGTH UA_GEN_NS_DEPENDS_NS DEPENDS_NS_LEN)
-
-    if(NOT DEPENDS_TYPES_LEN EQUAL DEPENDS_NS_LEN)
-        message(FATAL_ERROR "ua_generate_nodeset parameters DEPENDS_NS and DEPENDS_TYPES must have the same number of list elements")
+        set(UA_GEN_NS_OUTPUT_DIR ${PROJECT_BINARY_DIR}/src_generated/open62541)
     endif()
 
     # Set default target prefix
@@ -274,13 +276,12 @@ function(ua_generate_nodeset)
 
     set(GEN_NS0 "")
     set(TARGET_SUFFIX "ns-${UA_GEN_NS_NAME}")
-    set(FILE_SUFFIX "_${UA_GEN_NS_NAME}")
+    set(FILE_SUFFIX "_${UA_GEN_NS_NAME}_generated")
     string(REPLACE "-" "_" FILE_SUFFIX ${FILE_SUFFIX})
 
     if ("${UA_GEN_NS_NAME}" STREQUAL "ns0")
-        set(GEN_NS0 "--generate-ns0")
         set(TARGET_SUFFIX "namespace")
-        set(FILE_SUFFIX "0")
+        set(FILE_SUFFIX "0_generated")
     endif()
 
     set(GEN_IGNORE "")
@@ -288,18 +289,17 @@ function(ua_generate_nodeset)
         set(GEN_IGNORE "--ignore=${UA_GEN_NS_IGNORE}")
     endif()
 
-    set(GEN_BIN_SIZE "")
-    if (UA_GEN_NS_ENCODE_BINARY_SIZE OR "${UA_GEN_NS_ENCODE_BINARY_SIZE}" STREQUAL "0")
-        set(GEN_BIN_SIZE "--encode-binary-size=${UA_GEN_NS_ENCODE_BINARY_SIZE}")
-    endif()
-
-
     set(TYPES_ARRAY_LIST "")
     foreach(f ${UA_GEN_NS_DEPENDS_TYPES})
-        set(TYPES_ARRAY_LIST ${TYPES_ARRAY_LIST} "--types-array=${f}")
+        # Replace dash with underscore to make valid c literal
+        string(REPLACE "-" "_" TYPE_ARRAY ${f})
+
+        set(TYPES_ARRAY_LIST ${TYPES_ARRAY_LIST} "--types-array=${TYPE_ARRAY}")
     endforeach()
     if(UA_GEN_NS_TYPES_ARRAY)
-        set(TYPES_ARRAY_LIST ${TYPES_ARRAY_LIST} "--types-array=${UA_GEN_NS_TYPES_ARRAY}")
+        # Replace dash with underscore to make valid c literal
+        string(REPLACE "-" "_" TYPE_ARRAY ${UA_GEN_NS_TYPES_ARRAY})
+        set(TYPES_ARRAY_LIST ${TYPES_ARRAY_LIST} "--types-array=${TYPE_ARRAY}")
     endif()
 
     set(DEPENDS_FILE_LIST "")
@@ -310,14 +310,14 @@ function(ua_generate_nodeset)
     foreach(f ${UA_GEN_NS_FILE})
         set(FILE_LIST ${FILE_LIST} "--xml=${f}")
     endforeach()
-    
-    # Make sure that the output directory exists 
+
+    # Make sure that the output directory exists
     if(NOT EXISTS ${UA_GEN_NS_OUTPUT_DIR})
         file(MAKE_DIRECTORY ${UA_GEN_NS_OUTPUT_DIR})
     endif()
 
-    add_custom_command(OUTPUT ${UA_GEN_NS_OUTPUT_DIR}/ua_namespace${FILE_SUFFIX}.c
-                       ${UA_GEN_NS_OUTPUT_DIR}/ua_namespace${FILE_SUFFIX}.h
+    add_custom_command(OUTPUT ${UA_GEN_NS_OUTPUT_DIR}/namespace${FILE_SUFFIX}.c
+                       ${UA_GEN_NS_OUTPUT_DIR}/namespace${FILE_SUFFIX}.h
                        PRE_BUILD
                        COMMAND ${PYTHON_EXECUTABLE} ${open62541_TOOLS_DIR}/nodeset_compiler/nodeset_compiler.py
                        ${GEN_INTERNAL_HEADERS}
@@ -327,7 +327,7 @@ function(ua_generate_nodeset)
                        ${TYPES_ARRAY_LIST}
                        ${DEPENDS_FILE_LIST}
                        ${FILE_LIST}
-                       ${UA_GEN_NS_OUTPUT_DIR}/ua_namespace${FILE_SUFFIX}
+                       ${UA_GEN_NS_OUTPUT_DIR}/namespace${FILE_SUFFIX}
                        DEPENDS
                        ${open62541_TOOLS_DIR}/nodeset_compiler/nodeset_compiler.py
                        ${open62541_TOOLS_DIR}/nodeset_compiler/nodes.py
@@ -342,22 +342,24 @@ function(ua_generate_nodeset)
 
     add_custom_target(${UA_GEN_NS_TARGET_PREFIX}-${TARGET_SUFFIX}
                       DEPENDS
-                      ${UA_GEN_NS_OUTPUT_DIR}/ua_namespace${FILE_SUFFIX}.c
-                      ${UA_GEN_NS_OUTPUT_DIR}/ua_namespace${FILE_SUFFIX}.h)
+                      ${UA_GEN_NS_OUTPUT_DIR}/namespace${FILE_SUFFIX}.c
+                      ${UA_GEN_NS_OUTPUT_DIR}/namespace${FILE_SUFFIX}.h)
     if (UA_GEN_NS_DEPENDS_TARGET)
         add_dependencies(${UA_GEN_NS_TARGET_PREFIX}-${TARGET_SUFFIX} ${UA_GEN_NS_DEPENDS_TARGET})
     endif()
 
     if(UA_COMPILE_AS_CXX)
-        set_source_files_properties(${UA_GEN_NS_OUTPUT_DIR}/ua_namespace${FILE_SUFFIX}.c PROPERTIES LANGUAGE CXX)
+        set_source_files_properties(${UA_GEN_NS_OUTPUT_DIR}/namespace${FILE_SUFFIX}.c PROPERTIES LANGUAGE CXX)
     endif()
+
+    string(REPLACE "-" "_" UA_GEN_NS_NAME ${UA_GEN_NS_NAME})
+    string(TOUPPER "${UA_GEN_NS_NAME}" GEN_NAME_UPPER)
 
     set_property(GLOBAL PROPERTY "UA_GEN_NS_DEPENDS_FILE_${UA_GEN_NS_NAME}" ${UA_GEN_NS_DEPENDS_NS} ${UA_GEN_NS_FILE})
     set_property(GLOBAL PROPERTY "UA_GEN_NS_DEPENDS_TYPES_${UA_GEN_NS_NAME}" ${UA_GEN_NS_DEPENDS_TYPES} ${UA_GEN_NS_TYPES_ARRAY})
 
-    string(TOUPPER "${UA_GEN_NS_NAME}" GEN_NAME_UPPER)
-    set(UA_NODESET_${GEN_NAME_UPPER}_SOURCES "${UA_GEN_NS_OUTPUT_DIR}/ua_namespace${FILE_SUFFIX}.c" CACHE INTERNAL "UA_NODESET_${GEN_NAME_UPPER} source files")
-    set(UA_NODESET_${GEN_NAME_UPPER}_HEADERS "${UA_GEN_NS_OUTPUT_DIR}/ua_namespace${FILE_SUFFIX}.h" CACHE INTERNAL "UA_NODESET_${GEN_NAME_UPPER} header files")
+    set(UA_NODESET_${GEN_NAME_UPPER}_SOURCES "${UA_GEN_NS_OUTPUT_DIR}/namespace${FILE_SUFFIX}.c" CACHE INTERNAL "UA_NODESET_${GEN_NAME_UPPER} source files")
+    set(UA_NODESET_${GEN_NAME_UPPER}_HEADERS "${UA_GEN_NS_OUTPUT_DIR}/namespace${FILE_SUFFIX}.h" CACHE INTERNAL "UA_NODESET_${GEN_NAME_UPPER} header files")
     set(UA_NODESET_${GEN_NAME_UPPER}_TARGET "${UA_GEN_NS_TARGET_PREFIX}-${TARGET_SUFFIX}" CACHE INTERNAL "UA_NODESET_${GEN_NAME_UPPER} target")
 
 endfunction()
@@ -450,7 +452,7 @@ function(ua_generate_nodeset_and_datatypes)
 
     # Set default value for output dir
     if(NOT UA_GEN_OUTPUT_DIR OR "${UA_GEN_OUTPUT_DIR}" STREQUAL "")
-        set(UA_GEN_OUTPUT_DIR ${PROJECT_BINARY_DIR}/src_generated)
+        set(UA_GEN_OUTPUT_DIR ${PROJECT_BINARY_DIR}/src_generated/open62541)
     endif()
     # Set default target prefix
     if(NOT UA_GEN_TARGET_PREFIX OR "${UA_GEN_TARGET_PREFIX}" STREQUAL "")
@@ -463,7 +465,7 @@ function(ua_generate_nodeset_and_datatypes)
     if(NOT "${UA_GEN_FILE_BSD}" STREQUAL "")
         # Generate Datatypes for nodeset
         ua_generate_datatypes(
-            NAME "ua_types_${UA_GEN_NAME}"
+            NAME "types_${UA_GEN_NAME}"
             TARGET_PREFIX "${UA_GEN_TARGET_PREFIX}"
             TARGET_SUFFIX "types-${UA_GEN_NAME}"
             NAMESPACE_IDX ${UA_GEN_NAMESPACE_IDX}
@@ -491,15 +493,20 @@ function(ua_generate_nodeset_and_datatypes)
         set(TYPES_DEPENDS "UA_TYPES")
     else()
         foreach(f ${UA_GEN_DEPENDS})
-            get_property(DEPENDS_FILE GLOBAL PROPERTY "UA_GEN_NS_DEPENDS_FILE_${f}")
+          if(EXISTS ${f})
+            set(NODESET_DEPENDS ${NODESET_DEPENDS} "${f}")
+          else()
+            string(REPLACE "-" "_" DEPENDS_NAME "${f}")
+            get_property(DEPENDS_FILE GLOBAL PROPERTY "UA_GEN_NS_DEPENDS_FILE_${DEPENDS_NAME}")
             if(NOT DEPENDS_FILE OR "${DEPENDS_FILE}" STREQUAL "")
                 message(FATAL_ERROR "Nodeset dependency ${f} needs to be generated before ${UA_GEN_NAME}")
             endif()
 
             set(NODESET_DEPENDS ${NODESET_DEPENDS} "${DEPENDS_FILE}")
-            get_property(DEPENDS_TYPES GLOBAL PROPERTY "UA_GEN_NS_DEPENDS_TYPES_${f}")
+            get_property(DEPENDS_TYPES GLOBAL PROPERTY "UA_GEN_NS_DEPENDS_TYPES_${DEPENDS_NAME}")
             set(TYPES_DEPENDS ${TYPES_DEPENDS} "${DEPENDS_TYPES}")
             set(NODESET_DEPENDS_TARGET ${NODESET_DEPENDS_TARGET} "${UA_GEN_TARGET_PREFIX}-ns-${f}")
+          endif()
         endforeach()
     endif()
 

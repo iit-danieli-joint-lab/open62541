@@ -22,20 +22,21 @@ import xml.dom.minidom as dom
 import logging
 import codecs
 import re
-import six
+from datatypes import *
+from nodes import *
+from opaque_type_mapping import opaque_type_mapping
 
 __all__ = ['NodeSet', 'getSubTypesOf']
 
 logger = logging.getLogger(__name__)
 
-from datatypes import *
-from nodes import *
-from opaque_type_mapping import opaque_type_mapping
-
 if sys.version_info[0] >= 3:
     # strings are already parsed to unicode
     def unicode(s):
         return s
+    string_types = str
+else:
+    string_types = basestring 
 
 ####################
 # Helper Functions #
@@ -315,9 +316,16 @@ class NodeSet(object):
             if ref.referenceType.i == 45:
                 return self.getBaseDataType(self.nodes[ref.target])
         return node
-                
+
+    def getNodeTypeDefinition(self, node):
+        for ref in node.references:
+            # 40 = HasTypeDefinition
+            if ref.referenceType.i == 40 and ref.isForward:
+                return self.nodes[ref.target]
+        return None
+
     def getDataTypeNode(self, dataType):
-        if isinstance(dataType, six.string_types):
+        if isinstance(dataType, string_types):
             if not valueIsInternalType(dataType):
                 logger.error("Not a valid dataType string: " + dataType)
                 return None
@@ -347,3 +355,13 @@ class NodeSet(object):
             for ref in u.references:
                 back = Reference(ref.target, ref.referenceType, ref.source, not ref.isForward)
                 self.nodes[ref.target].references.add(back) # ref set does not make a duplicate entry
+
+    def setNodeParent(self):
+        parentreftypes = getSubTypesOf(self, self.getNodeByBrowseName("HierarchicalReferences"))
+        parentreftypes = list(map(lambda x: x.id, parentreftypes))
+
+        for node in self.nodes.values():
+            parentref = node.getParentReference(parentreftypes)
+            if parentref is not None:
+                node.parent = self.nodes[parentref.target]
+                node.parentReference = self.nodes[parentref.referenceType]

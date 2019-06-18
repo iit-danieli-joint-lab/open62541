@@ -283,10 +283,10 @@ _UA_END_DECLS
         writec("}");
 
         functionNumber = functionNumber + 1
-    
+
     if functionNumber > 0:
-        writec("\nenum {{ARRAY_FUNCTION_NAMESPACE0_GENERATED_SIZE = 2 * {functionnumber}}};\n".format(functionnumber=functionNumber))
-        writec("""UA_StatusCode (*function_namespace0_generated[ARRAY_FUNCTION_NAMESPACE0_GENERATED_SIZE])(UA_Server *, UA_UInt16 *) = {""")
+        writec("\nenum {{ARRAY_FUNCTION_{outfilebase}_SIZE = 2 * {functionnumber}}};\n".format(outfilebase=outfilebase.upper(), functionnumber=functionNumber))
+        writec("""UA_StatusCode (*function_%s[ARRAY_FUNCTION_%s_SIZE])(UA_Server *, UA_UInt16 *) = {"""%(outfilebase, outfilebase.upper()))
         for i in range(0, functionNumber):
             writec("    function_{outfilebase}_{idx}_begin,".format(
                 outfilebase=outfilebase, idx=str(i)))
@@ -313,9 +313,9 @@ UA_StatusCode %s(UA_Server *server)
 
     if functionNumber > 0:
         writec("""
-    for (index=0; index < ARRAY_FUNCTION_NAMESPACE0_GENERATED_SIZE; index++)
+    for (index=0; index < ARRAY_FUNCTION_%s_SIZE; index++)
     {
-        retVal = (*function_namespace0_generated[index])(server, ns);
+        retVal = (*function_%s[index])(server, ns);
         if(retVal != UA_STATUSCODE_GOOD)
         {
             break;
@@ -323,7 +323,7 @@ UA_StatusCode %s(UA_Server *server)
     }
 
     return retVal;
-}""")
+}""" % (outfilebase.upper(), outfilebase))
 
     outfileh.flush()
     os.fsync(outfileh)
