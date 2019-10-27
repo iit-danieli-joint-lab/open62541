@@ -420,7 +420,7 @@ if(NOT UA_COMPILE_AS_CXX AND (CMAKE_COMPILER_IS_GNUCC OR "x${CMAKE_C_COMPILER_ID
                     -fno-strict-aliasing # fewer compiler assumptions about pointer types
                     -fexceptions # recommended for multi-threaded C code, also in combination with C++ code
                     )
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Werror")
+    # set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Werror")
 
     if (NOT MINGW)
         if(UA_ENABLE_HARDENING)
