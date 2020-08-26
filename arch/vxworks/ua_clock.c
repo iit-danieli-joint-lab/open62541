@@ -21,10 +21,22 @@
 
 #include "ua_types.h"
 
-UA_DateTime UA_DateTime_now(void){
+UA_DateTime UA_DateTime_nowNonMonotonic(void){
   struct timeval tv;
   gettimeofday(&tv, NULL);
   return (tv.tv_sec * UA_DATETIME_SEC) + (tv.tv_usec * UA_DATETIME_USEC) + UA_DATETIME_UNIX_EPOCH;
+}
+
+UA_DateTime monotonicOffset;
+
+void UA_DateTime_resetMonotonicOffset(void){
+    monotonicOffset = UA_DateTime_nowNonMonotonic()-UA_DateTime_nowMonotonic();
+}
+
+
+
+UA_DateTime UA_DateTime_now(void){
+    return UA_DateTime_nowMonotonic() + monotonicOffset;
 }
 
 /* Credit to https://stackoverflow.com/questions/13804095/get-the-time-zone-gmt-offset-in-c */
